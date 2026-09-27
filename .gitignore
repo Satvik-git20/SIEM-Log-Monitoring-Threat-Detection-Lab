@@ -1,0 +1,88 @@
+# =============================================================================
+# SOC-Lab: SIEM Log Monitoring & Threat Detection Platform
+# Secrets and local lab state must never enter version control.
+# =============================================================================
+
+# --- Secrets: NEVER COMMIT ---------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env.local
+secrets/
+.secrets/
+!.gitkeep
+
+# Keys, certificates, tokens
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+certs/
+certificates/
+pki/
+*.cer
+*.crt
+*.der
+
+# Elastic / Fleet / Kibana local state and generated credentials
+elastic-stack/
+kibana-data/
+fleet/
+*.enrollment-token
+enrollment-token*
+elastic_password
+elastic-password
+kibana_system_token
+.kibana/
+elasticsearch/
+kibana/
+elastic-agent/
+
+# --- OS / editor noise -------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.DS_Store
+.AppleDouble
+._*
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.orig
+*.rej
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Windows / PowerShell cruft
+*.log
+!docs/**/*.log
+powershell_history.txt
+ConsoleHost_history.txt
+
+# --- Local runtime & test artefacts -----------------------------------------
+runtime/
+tmp/
+work/
+local/
+tests/validation/results/*
+!tests/validation/results/.gitkeep
+!tests/validation/results/README.md
+*.har
+
+# --- Simulated telemetry exports (large, regenerable) ------------------------
+soc-lab-samples/
+*.ndjson.gz
+!elastic/alerts/*.ndjson
+!elastic/dashboards/*.ndjson
+!elastic/saved-searches/*.ndjson
+
+# --- Credentials accidentally pasted into docs ------------------------------
+# Reminder: run `git log -p | grep -iE 'password|token|BEGIN .*PRIVATE KEY'`
+# if a secret is ever committed by accident.

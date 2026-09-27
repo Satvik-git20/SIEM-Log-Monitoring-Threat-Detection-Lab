@@ -1,0 +1,49 @@
+MIT License
+
+Copyright (c) 2026 SOC-Lab: SIEM Log Monitoring & Threat Detection Platform
+Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+THIRD-PARTY COMPONENTS AND ATTRIBUTION
+======================================
+
+This repository contains configuration, detection logic and documentation. It
+does not redistribute any Elastic, Microsoft or other vendor software binaries.
+Those are downloaded directly from vendor distribution points at setup time.
+
+Microsoft Sysmon (https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon)
+  Copyright (c) Microsoft Corporation. Licensed under the Sysinternals EULA.
+  Downloaded at install time from https://download.sysinternals.com/files/Sysmon.zip
+  The Sysmon schema referenced in sysmon/sysmon-config.xml was obtained from the
+  installed binary via `sysmon64.exe -? config` (see sysmon/README.md).
+
+Elastic Stack (Elasticsearch, Kibana, Elastic Agent)
+  Copyright 2024-2026 Elasticsearch B.V. Licensed under the Elastic License 2.0
+  or the SSPL/Elastic License for the "Free" distribution. NOT redistributed here.
+
+MITRE ATT&CK (https://attack.mitre.org/)
+  Copyright 2015-2026 The MITRE Corporation. ATT&CK content is used for
+  reference and mapping under the terms published by MITRE. Definitions are
+  paraphrased and cited rather than copied wholesale.
+
+MITRE ATT&CK content is licensed under the
+https://attack.mitre.org/resources/terms-of-use/ terms of use.
