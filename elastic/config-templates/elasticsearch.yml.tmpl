@@ -1,0 +1,118 @@
+# =============================================================================
+# elasticsearch.yml template for the NATIVE (non-Docker) Windows install.
+#
+# Rendered by:  scripts/setup/Install-ElasticStack.ps1
+# Token syntax: a double-underscore-wrapped UPPERCASE name is replaced from
+# .env. The installer refuses to render if any token survives unsubstituted.
+# See the token table at the bottom of this file.
+# Do not put real secrets in this template.
+#
+# VERIFIED against Elasticsearch 9.5.3 Windows ZIP distribution.
+# Every setting below is a current, non-deprecated setting name.
+# =============================================================================
+
+# --- Cluster identity -------------------------------------------------------
+cluster.name: __ES_CLUSTER_NAME__
+node.name: soc-lab-es01
+node.roles: [ "master", "data", "ingest", "remote_cluster_client" ]
+
+# --- Discovery --------------------------------------------------------------
+# Lab is a single node. This is what allows xpack.security.transport.ssl to be
+# disabled below; with a real multi-node cluster transport TLS is mandatory.
+discovery.type: single-node
+
+# --- Network ----------------------------------------------------------------
+# LOOPBACK ONLY. This single line is the lab's main network security control:
+# Elasticsearch refuses to bind to a non-loopback address in production mode
+# anyway, and binding to 127.0.0.1 means no other host can reach the cluster.
+network.host: 127.0.0.1
+http.port: 9200
+transport.port: 9300
+
+# --- Paths ------------------------------------------------------------------
+# Both are inside the Elasticsearch install directory, which lives outside the
+# git repository (C:/elastic). Never place data.path inside the repo.
+path.data: __ES_PATH_DATA__
+path.logs: __ES_PATH_LOGS__
+
+# --- Memory locking ---------------------------------------------------------
+# Memory locking is NOT supported on Windows. bootstrap.memory_lock is
+# intentionally absent. See docs/troubleshooting.md#memory-lock.
+# On Linux/Docker you WOULD set bootstrap.memory_lock: true (compose.yml does).
+
+# --- Heap -------------------------------------------------------------------
+# Overridden by jvm.options.d/soc-lab.options written by the install script.
+# -XX:MaxRAMPercentage is deliberately NOT used: a laptop with WSL2 and the
+# Windows endpoint agent on it needs a hard cap so Elasticsearch cannot
+# starve the endpoint that produces the telemetry.
+# See docs/configuration.md#memory-budget
+
+# --- Security ---------------------------------------------------------------
+xpack.security.enabled: true
+
+# TLS DEVIATION (documented, intentional, lab-only):
+#   HTTP and transport TLS are DISABLED because every listener in this lab is
+#   bound to 127.0.0.1 on a single-user workstation. There is no untrusted
+#   network path to protect. This is NOT a production pattern.
+#   See docs/configuration.md#tls-deviation for the production alternative.
+xpack.security.http.ssl.enabled: false
+xpack.security.transport.ssl.enabled: false
+
+# --- elastic superuser password: NOT set here (Elasticsearch 9.x change) -----
+# In Elasticsearch 8.x you could put `ELASTIC_PASSWORD: <secret>` directly in
+# this file. That setting was REMOVED in 9.x. Starting 9.5.3 with it produces:
+#
+#   java.lang.IllegalArgumentException: unknown setting [ELASTIC_PASSWORD]
+#     ... please check the breaking changes documentation for removed settings
+#
+# The supported 9.x mechanism is a `bootstrap.password` SECURE SETTING in the
+# Elasticsearch keystore. The install script does this:
+#
+#   bin\elasticsearch-keystore add -x bootstrap.password   <-- from .env
+#   bin\elasticsearch ...                                    <-- boots
+#   POST /_security/user/elastic/_password                   <-- retires bootstrap
+#
+# This is the same flow Elastic's own Docker entrypoint uses
+# (docker-entrypoint.sh pipes $ELASTIC_PASSWORD into
+# `elasticsearch-keystore add -x 'bootstrap.password'`).
+# No password line belongs in this file.
+
+# --- License ----------------------------------------------------------------
+# Basic (free) license. All detection rules, dashboards and the Threat
+# Hunting view used by this lab work on Basic. No trial licence is needed and
+# none is requested.
+xpack.license.self_generated.type: basic
+
+# --- Telemetry --------------------------------------------------------------
+# 9.x REMOVED `telemetry.optIn` (it also aborts startup as an unknown
+# setting). The lab makes no outbound telemetry calls by design; nothing to
+# set. If you need to be explicit in a future version, check
+# https://www.elastic.co/docs/reference/elasticsearch/configuration-reference
+# for the current node-level telemetry setting before adding one here.
+xpack.monitoring.collection.enabled: false
+
+# --- Ingest / data stream tuning -------------------------------------------
+# Lab-scale retention. The Windows host has ~148 GB free and the lab is
+# expected to generate well under 1 GB/day, but a bounded ILM policy is still
+# configured in elastic/index-templates/ so a forgotten lab cannot fill the disk.
+# See docs/configuration.md#retention and Phase 16 noise analysis.
+
+# --- Disk watermarks --------------------------------------------------------
+# Defaults (85/90/95) are already sensible; restated here for visibility because
+# Phase 16 measures storage growth against these.
+cluster.routing.allocation.disk.watermark.low: 85%
+cluster.routing.allocation.disk.watermark.high: 90%
+cluster.routing.allocation.disk.watermark.flood_stage: 95%
+
+# =============================================================================
+# Token table (substituted by scripts/setup/Install-ElasticStack.ps1)
+# Token names are written here without their double-underscore wrapper so this
+# comment block survives rendering intact.
+#   ES_CLUSTER_NAME        <- .env ES_CLUSTER_NAME
+#   ES_PATH_DATA           <- absolute path, e.g. C:/elastic/elasticsearch-9.5.3/data
+#   ES_PATH_LOGS           <- absolute path, e.g. C:/elastic/elasticsearch-9.5.3/logs
+#
+# No secret is rendered into this file in 9.x: the elastic password lives in the
+# Elasticsearch keystore as `bootstrap.password` and is rotated to
+# ELASTIC_PASSWORD by the install script. See the security section above.
+# =============================================================================

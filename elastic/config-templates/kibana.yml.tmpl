@@ -1,0 +1,157 @@
+# =============================================================================
+# kibana.yml template for the NATIVE (non-Docker) Windows install.
+#
+# Rendered by:  scripts/setup/Install-ElasticStack.ps1
+# Token syntax: a double-underscore-wrapped UPPERCASE name is replaced from
+# .env. The installer refuses to render if any token survives unsubstituted.
+# Do not put real secrets in this template.
+#
+# VERIFIED against Kibana 9.5.3 Windows ZIP distribution.
+# Settings that were removed in 9.x (for example
+# xpack.fleet.agents.fleet_server.enabled, which became a Fleet-managed
+# integration) are deliberately NOT set. Verify against
+# https://www.elastic.co/docs/deploy/kibana/configuration/kibana-settings
+# when upgrading.
+# =============================================================================
+
+# --- Server ------------------------------------------------------------------
+server.port: 5601
+# LOOPBACK ONLY: the SOC dashboard and Fleet enrollment UI are not exposed
+# beyond this machine. Change deliberately and read the warning in
+# docs/configuration.md#network-binding first.
+server.host: "127.0.0.1"
+server.publicBaseUrl: "http://localhost:5601"
+server.name: "soc-lab-kibana"
+
+# Data path stays outside the git repository.
+path.data: __KIBANA_PATH_DATA__
+
+# --- Elasticsearch connection ------------------------------------------------
+elasticsearch.hosts: [ "http://127.0.0.1:9200" ]
+
+# SERVICE ACCOUNT TOKEN, not the elastic superuser.
+#
+# Kibana 9.x hard-rejects `elasticsearch.username: elastic`:
+#   FATAL Error: [config validation of [elasticsearch].username]: value of
+#   "elastic" is forbidden. This is a superuser account that cannot write to
+#   system indices that Kibana needs to function. Use a service account token
+#   instead.
+#
+# The token is created by the install script (Install-ElasticStack.ps1
+# -Stage ServiceToken) against the Service Accounts API:
+#   POST /_security/service/elastic/kibana/credential/token/soc-lab-kibana-token
+# and then written back into the gitignored .env as KIBANA_SERVICE_TOKEN so
+# re-renders are stable. Tokens are Base64 and may expire (expires_in below);
+# see scripts/troubleshooting/Renew-KibanaServiceToken.ps1.
+elasticsearch.serviceAccountToken: __KIBANA_SERVICE_TOKEN__
+
+# Valid `elasticsearch.*` keys in 9.5.3, read from the installed schema at
+# node_modules/@kbn/core/packages/elasticsearch/server-internal/src/elasticsearch_config.js:
+#   sniffOnStart sniffInterval sniffOnConnectionFault hosts maxSockets
+#   maxIdleSockets maxResponseSize idleSocketTimeout compression username
+#   password serviceAccountToken requestHeadersWhitelist customHeaders
+#   shardTimeout requestTimeout pingTimeout logQueries ssl{...}
+#
+# `elasticsearch.shutdownTimeout` was REMOVED in 9.x and aborts startup with
+# "Additional properties are not allowed". requestTimeout is a DURATION, not a
+# bare millisecond number.
+elasticsearch.requestTimeout: 60s
+elasticsearch.pingTimeout: 60s
+
+# --- Fleet / Elastic Agent ---------------------------------------------------
+# NOTE: `xpack.fleet.agents.fleet_server.enabled` was an 8.x-era toggle. In
+# 9.x Fleet Server is a Fleet-managed INTEGRATION, not a Kibana boolean, so
+# that key is deliberately absent. It is enabled by adding the Fleet Server
+# integration to the agent policy in Phase 4.
+xpack.fleet.enabled: true
+xpack.fleet.agents.enabled: true
+xpack.fleet.agents.elasticsearch.hosts: [ "http://127.0.0.1:9200" ]
+xpack.fleet.agents.fleet_server.hosts: [ "http://127.0.0.1:8220" ]
+
+# No SSL override is set, and none is needed: this lab's Elasticsearch and Fleet
+# Server both speak plain HTTP on 127.0.0.1.
+#
+# In Kibana 9.5.3 there is NO `ssl` sub-object under `xpack.fleet.agents` at
+# all. BOTH of these abort startup with
+#   "Additional properties are not allowed ('ssl' was unexpected)":
+#     xpack.fleet.agents.elasticsearch.ssl.enabled
+#     xpack.fleet.agents.fleet_server.ssl.enabled
+# The 8.x-era keys were removed. For a production Fleet with TLS, configure
+# trust on the AGENT side at enrollment instead, via the certificate authority
+# passed to the enrollment command. See docs/configuration.md#fleet-tls
+
+# NOTE: the Elastic integration package registry is deliberately NOT overridden.
+# Fleet must reach https://epr.elastic.co to download the System and Windows
+# integration packages. Do not point xpack.fleet.registryUrl at localhost:
+# doing so breaks integration package installation, which is required in Phase 4.
+# Offline/air-gapped installs would vendor the .zip packages instead
+# (see docs/troubleshooting.md#air-gapped).
+
+# --- Telemetry --------------------------------------------------------------
+# No usage data from the lab.
+telemetry.optIn: false
+telemetry.allowChangingOptInStatus: false
+
+# --- Logging -----------------------------------------------------------------
+# VERIFIED against the schema shipped in the installed Kibana 9.5.3 at
+# node_modules/@kbn/core/packages/logging/server-internal/src/appenders/
+#
+# The old 8.x-style dotted form is INVALID in 9.x:
+#   logging.appenders.rolling.policy.max_size: 10485760   <-- rejected
+#   logging.appenders.rolling.policy.max_files: 7         <-- rejected
+# `logging.appenders` is a oneOf over console|file|otel|rewrite|rolling-file,
+# and a rolling-file branch also REQUIRES a `policy`, `strategy` and/or
+# `retention` object. Getting this wrong aborts Kibana startup with
+# "Configuring logger failed: ValidationError".
+#
+# The 9.5.3 schema, verbatim from the installed source:
+#   rolling-file : { type, layout, fileName, policy, strategy, retention }
+#   layout       : oneOf json | pattern  -- MUST be present or startup aborts
+#                  json    -> { type: 'json' }
+#                  pattern -> { type: 'pattern', highlight?, pattern? }
+#   policy       : oneOf size-limit | time-interval
+#                  size-limit -> { type: 'size-limit', size: <byteSize> }
+#   strategy     : { type: 'numeric', pattern: <must include %i>, max: 1..100 }
+#   retention    : { maxFiles?: 1..365, maxAccumulatedFileSize?, removeOlderThan? }
+#                  (at least one retention directive is mandatory)
+logging.root.level: info
+logging.appenders.rolling:
+  type: rolling-file
+  layout:
+    type: json
+  fileName: __KIBANA_PATH_LOGS__/kibana.log
+  policy:
+    type: size-limit
+    size: 10mb
+  strategy:
+    type: numeric
+    pattern: "-%i"
+    max: 7
+  retention:
+    maxFiles: 7
+# To debug a failed detection-rule import or pipeline, uncomment the next line
+# and restart. Kibana writes usable errors to stdout by default.
+#logging.root.level: debug
+
+# --- Security Solution (Elastic Security app) --------------------------------
+# Kibana 9.x REFUSES `xpack.security.enabled` in kibana.yml:
+#   FATAL Error: [xpack.security]: enabled status cannot be changed.
+#                Please, remove [xpack.security.enabled] from the configuration file.
+# Security is always on in 9.x, so the setting is removed rather than set.
+# The Security Solution app (detection rules, Alerts table, Cases, Threat
+# Hunting) is available under the Basic licence - no trial is required and
+# this lab does not request one.
+
+# =============================================================================
+# Token table (substituted by scripts/setup/Install-ElasticStack.ps1)
+# Token names are written here without their double-underscore wrapper so this
+# comment block survives rendering intact.
+#   KIBANA_PATH_DATA        <- absolute path, e.g. C:/elastic/kibana-9.5.3/data
+#   KIBANA_PATH_LOGS        <- absolute path, e.g. C:/elastic/kibana-9.5.3/logs
+#   KIBANA_SERVICE_TOKEN    <- .env KIBANA_SERVICE_TOKEN   (SECRET, rendered file is gitignored)
+#
+# Render order matters: -Stage ServiceToken must run BEFORE -Stage Render, and
+# -Stage All therefore orders them ServiceToken -> Render. Rendering first
+# leaves the token unsubstituted and Kibana refuses to start.
+# See docs/configuration.md#kibana-credential
+# =============================================================================
