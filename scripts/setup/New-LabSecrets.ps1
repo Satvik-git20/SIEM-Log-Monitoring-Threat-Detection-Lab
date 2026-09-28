@@ -88,6 +88,11 @@ $generated = [ordered]@{
     # via the Service Accounts API. Install-ElasticStack.ps1 -Stage ServiceToken
     # creates it and writes it into .env.
     'KIBANA_SERVICE_TOKEN'   = 'CHANGE_ME_created_by_Install-ElasticStack_-Stage_ServiceToken'
+    # KIBANA_ENCRYPTION_KEY becomes xpack.encryptedSavedObjects.encryptionKey in
+    # kibana.yml. Kibana requires >= 32 characters. Without it, Fleet setup
+    # fails forever with FleetEncryptedSavedObjectEncryptionKeyRequired.
+    # Rotating it makes existing encrypted saved objects unreadable.
+    'KIBANA_ENCRYPTION_KEY'  = (New-LabPassword -Length 48)
 }
 
 $lines = foreach ($line in Get-Content -LiteralPath $Example) {
@@ -111,6 +116,7 @@ Write-Host "Wrote $EnvFile" -ForegroundColor Green
 Write-Host "  ES_BOOTSTRAP_PASSWORD  : $($generated['ES_BOOTSTRAP_PASSWORD'].Length) chars (transient, retired at install)" -ForegroundColor DarkGray
 Write-Host "  ELASTIC_PASSWORD       : $($generated['ELASTIC_PASSWORD'].Length) chars" -ForegroundColor DarkGray
 Write-Host "  KIBANA_SERVICE_TOKEN   : created later by Install-ElasticStack.ps1 -Stage ServiceToken" -ForegroundColor DarkGray
+Write-Host "  KIBANA_ENCRYPTION_KEY  : $($generated['KIBANA_ENCRYPTION_KEY'].Length) chars (must stay >= 32; rotating it orphans encrypted saved objects)" -ForegroundColor DarkGray
 if ($ignored) {
     Write-Host "  .gitignore check       : CONFIRMED ignored by git" -ForegroundColor Green
 } else {

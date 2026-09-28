@@ -115,6 +115,11 @@ telemetry.allowChangingOptInStatus: false
 #   retention    : { maxFiles?: 1..365, maxAccumulatedFileSize?, removeOlderThan? }
 #                  (at least one retention directive is mandatory)
 logging.root.level: info
+# The appender must be ATTACHED to root. Defining `logging.appenders.rolling`
+# alone only registers it - Kibana's root logger defaults to appenders:
+# ['console'], so without this line the file is never written and the only
+# record of a startup failure is the console.
+logging.root.appenders: [ "console", "rolling" ]
 logging.appenders.rolling:
   type: rolling-file
   layout:
@@ -138,9 +143,24 @@ logging.appenders.rolling:
 #   FATAL Error: [xpack.security]: enabled status cannot be changed.
 #                Please, remove [xpack.security.enabled] from the configuration file.
 # Security is always on in 9.x, so the setting is removed rather than set.
-# The Security Solution app (detection rules, Alerts table, Cases, Threat
-# Hunting) is available under the Basic licence - no trial is required and
-# this lab does not request one.
+
+# --- Encrypted saved objects key (REQUIRED in 9.5.3) -------------------------
+# GET /api/fleet/agents/setup reports
+#   missing_optional_features: ["encrypted_saved_object_encryption_key_required"]
+# which reads as optional. It is NOT: without this key Fleet setup fails
+# repeatedly and never completes, because creating the agent binary download
+# source needs it:
+#   FleetEncryptedSavedObjectEncryptionKeyRequired:
+#     Agent binary source needs encrypted saved object api key to be set
+#     at DownloadSourceService.create (server/services/download_source.js)
+#   POST /api/fleet/agents/setup then returns HTTP 400 forever, retried
+#   internally with backoff, while Fleet stays uninitialized.
+#
+# Minimum length is 32 characters. Kibana can auto-generate one, but doing it
+# explicitly makes the lab reproducible. Changing this value after Kibana has
+# stored encrypted saved objects makes them unreadable - see
+# docs/troubleshooting.md#encrypted-saved-objects.
+xpack.encryptedSavedObjects.encryptionKey: __KIBANA_ENCRYPTION_KEY__
 
 # =============================================================================
 # Token table (substituted by scripts/setup/Install-ElasticStack.ps1)
@@ -149,6 +169,7 @@ logging.appenders.rolling:
 #   KIBANA_PATH_DATA        <- absolute path, e.g. C:/elastic/kibana-9.5.3/data
 #   KIBANA_PATH_LOGS        <- absolute path, e.g. C:/elastic/kibana-9.5.3/logs
 #   KIBANA_SERVICE_TOKEN    <- .env KIBANA_SERVICE_TOKEN   (SECRET, rendered file is gitignored)
+#   KIBANA_ENCRYPTION_KEY   <- .env KIBANA_ENCRYPTION_KEY  (SECRET, >= 32 chars, rendered file is gitignored)
 #
 # Render order matters: -Stage ServiceToken must run BEFORE -Stage Render, and
 # -Stage All therefore orders them ServiceToken -> Render. Rendering first

@@ -247,6 +247,15 @@ function Invoke-RenderConfig {
                "(Elasticsearch must be running first).")
     }
 
+    # Kibana requires >= 32 chars here; without it Fleet setup never completes.
+    $kibanaEncKey = $env:KIBANA_ENCRYPTION_KEY
+    if (-not $kibanaEncKey -or $kibanaEncKey -like 'CHANGE_ME*') {
+        throw 'KIBANA_ENCRYPTION_KEY is not set. Run scripts/setup/New-LabSecrets.ps1 (needs >= 32 chars).'
+    }
+    if ($kibanaEncKey.Length -lt 32) {
+        throw "KIBANA_ENCRYPTION_KEY is $($kibanaEncKey.Length) chars; Kibana requires at least 32."
+    }
+
     $map = @{
         '__ES_CLUSTER_NAME__'     = if ($env:ES_CLUSTER_NAME) { $env:ES_CLUSTER_NAME } else { 'soc-lab-cluster' }
         '__ES_PATH_DATA__'        = ($esData -replace '\\','/')
@@ -254,6 +263,7 @@ function Invoke-RenderConfig {
         '__KIBANA_PATH_DATA__'    = ($kbData -replace '\\','/')
         '__KIBANA_PATH_LOGS__'    = ($kbLogs -replace '\\','/')
         '__KIBANA_SERVICE_TOKEN__' = $kibanaToken
+        '__KIBANA_ENCRYPTION_KEY__' = $kibanaEncKey
     }
 
     $pairs = @(

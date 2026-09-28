@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================================
+  SOC-Lab: Sysmon configuration for WIN-SOC01
+  ============================================================================
+  BUILD THIS FILE AGAINST YOUR INSTALLED BINARY. DO NOT BLIND-COPY.
+
+    Sysmon version   : 15.22   (Sysmon64.exe, verified on this host)
+    schemaversion    : 4.91    (from "Sysmon64.exe -s", binaryversion 18)
+    events available : 30      (from the same schema dump)
+
+  Regenerate or verify for your own build:
+      Sysmon64.exe -s          print the configuration schema, incl. schemaversion
+      Sysmon64.exe -s all      every historical schema version
+      Sysmon64.exe -? config   config file documentation
+
+  If Sysmon refuses this file, your schemaversion does not match the binary.
+  It must be the value YOUR Sysmon reports, not one copied from the internet.
+
+  ============================================================================
+  DESIGN INTENT: VISIBILITY vs EVENT VOLUME
+  ============================================================================
+  Sysmon's defaults collect little beyond process creation. Each block below is
+  a deliberate trade-off. The rule applied for this SOC lab:
+
+    COLLECT   anything that answers "who ran what, from where, and what did it
+              touch next" for the attack simulations in this repository:
+              Windows brute force, Linux SSH brute force, PowerShell misuse,
+              PowerShell to network correlation, and auth failure then success.
+
+    FILTER    high volume, low signal events on a laptop: DLL image loads from
+              signed Microsoft paths, routine file creates, all driver loads.
+              These bury the signals above in noise.
+
+    EXCLUDE   events that are pure noise for a log analysis lab. Each omission
+              is listed with a reason at the bottom of this file.
+
+  Every "onmatch=exclude" block names the noise it suppresses and why. Nothing
+  is dropped silently.
+
+  The Elastic Agent Windows integration ingests this channel as
+  logs-windows.sysmon_operational. Windows Security, System and Application
+  logs arrive separately via the System integration (logs-system.security and
+  friends). This file controls only the Sysmon channel.
+  ============================================================================
+-->
+<Sysmon schemaversion="4.91">
+
+  <!-- SHA256 only. The historical SHA1/MD5 defaults exist for legacy
+       correlation; for a fresh lab SHA256 alone is stronger and smaller. -->
+  <HashAlgorithms>sha256</HashAlgorithms>
+
+  <!-- ==================================================================
+       EID 1  PROCESS CREATION
+       Powers DET-03 (suspicious PowerShell) and DET-04 (PowerShell then
+       network). Kept completely unfiltered: the command line, the hash and
+       the PARENT process all arrive in this one event, which is why the
+       empty "include" set is the right configuration here. Adding noise
+       exclusions under this tag would blind both detections.
+       ================================================================== -->
+  <ProcessCreate onmatch="include" />
+
+  <!-- ==================================================================
+       EID 3  NETWORK CONNECTION
+       Powers DET-04. Capture everything, then drop loopback, the loudest
+       noise source on a Windows laptop (the OS, Edge and OneDrive make
+       constant 127.0.0.1 connections). External destination IP and port are
+       retained.
+       Loopback exclusion is safe for this lab because the PowerShell to
+       network simulation deliberately targets a 127.0.0.1 listener. If you
+       point that simulation at an external host instead, the connection is
+       NOT loopback and WILL be captured. The correlation key used by DET-04
+       is process.entity_id, which this filter does not touch.
+       ================================================================== -->
+  <NetworkConnect onmatch="exclude">
+    <DestinationIp>127.0.0.1</DestinationIp>
+    <DestinationIp>0.0.0.0</DestinationIp>
+    <DestinationIp>::1</DestinationIp>
+  </NetworkConnect>
+  <NetworkConnect onmatch="include" />
+
+  <!-- ==================================================================
+       EID 7  IMAGE LOAD (DLL loads)
+       Valuable for injection, but logging every image load for every process
+       produces thousands of events per minute from Edge, OneDrive and AV.
+       Kept OFF for a first pass lab. This is a documented accepted gap: you
+       lose some injection telemetry and gain a dashboard an analyst can
+       actually read. To enable for a deeper dive, switch this tag to
+       onmatch="exclude" and keep only non Microsoft, non System32 images.
+       ================================================================== -->
+  <ImageLoad onmatch="exclude" />
+
+  <!-- ==================================================================
+       EID 10  PROCESS ACCESS (LSASS and credential access)
+       The highest value credential theft signal (ATT&CK T1003). Logged, but
+       the routine opens made by SYSTEM and by AV/EDR health checks are
+       excluded, otherwise a baseline host floods with "who opened PID 4".
+       An "include" for any process touching lsass.exe is kept on top so the
+       detection is never filtered away.
+       ================================================================== -->
+  <ProcessAccess onmatch="exclude">
+    <SourceImage condition="contains">C:\Windows\System32\</SourceImage>
+    <GrantedAccess condition="is">0x1400</GrantedAccess>
+    <GrantedAccess condition="is">0x1010</GrantedAccess>
+    <GrantedAccess condition="is">0x1000</GrantedAccess>
+    <GrantedAccess condition="is">0x1FFFFF</GrantedAccess>
+  </ProcessAccess>
+  <ProcessAccess onmatch="include">
+    <TargetImage condition="end with">\lsass.exe</TargetImage>
+  </ProcessAccess>
+
+  <!-- ==================================================================
+       EID 11  FILE CREATE
+       Only writes to auto-start and staging locations, not the whole disk.
+       Removes TEMP churn while keeping the paths an attacker plants in.
+       ================================================================== -->
+  <FileCreate onmatch="exclude" />
+  <FileCreate onmatch="include">
+    <TargetFilename condition="contains">\Startup\</TargetFilename>
+    <TargetFilename condition="contains">\Start Menu\Programs\Startup\</TargetFilename>
+    <TargetFilename condition="contains">\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\</TargetFilename>
+    <TargetFilename condition="contains">\Windows\System32\Tasks\</TargetFilename>
+    <TargetFilename condition="contains">\Windows\Tasks\</TargetFilename>
+    <TargetFilename condition="is">C:\Windows\Temp\</TargetFilename>
+    <TargetFilename condition="contains">\Downloads\</TargetFilename>
+  </FileCreate>
+
+  <!-- ==================================================================
+       EID 12, 13, 14  REGISTRY
+       Auto-start and service registration only. Same reasoning as
+       FileCreate above.
+       ================================================================== -->
+  <RegistryEvent onmatch="exclude" />
+  <RegistryEvent onmatch="include">
+    <TargetObject condition="contains">\CurrentVersion\Run</TargetObject>
+    <TargetObject condition="contains">\CurrentVersion\RunOnce</TargetObject>
+    <TargetObject condition="contains">\CurrentVersion\Explorer\Shell Folders\Startup</TargetObject>
+    <TargetObject condition="contains">\Services\</TargetObject>
+    <TargetObject condition="contains">\Winlogon\</TargetObject>
+    <TargetObject condition="contains">\Image File Execution Options\</TargetObject>
+  </RegistryEvent>
+
+  <!-- ==================================================================
+       EID 8  REMOTE THREAD (process injection). Low volume, high signal.
+       Kept fully on.
+       ================================================================== -->
+  <CreateRemoteThread onmatch="include" />
+
+  <!-- ==================================================================
+       EID 22  DNS QUERY
+       Feeds the "PowerShell reaching out" hunts. Moderate volume, kept on.
+       ================================================================== -->
+  <DnsQuery onmatch="include" />
+
+  <!-- EID 6  DRIVER LOAD. Exclude drivers signed by Microsoft/Windows, keep
+       everything else so a rogue driver stands out. -->
+  <DriverLoad onmatch="exclude">
+    <Signature condition="contains">microsoft</Signature>
+    <Signature condition="contains">windows</Signature>
+  </DriverLoad>
+  <DriverLoad onmatch="include" />
+
+  <!-- EID 2  FILE CREATION TIME (timestomping). Low volume, kept on. -->
+  <FileCreateTime onmatch="include" />
+
+  <!-- EID 17 and 18  NAMED PIPE create and connect (C2 over pipes).
+       Low volume, kept on. -->
+  <PipeEvent onmatch="include" />
+
+  <!-- EID 19, 20, 21  WMI filter and consumer (persistence and fileless
+       execution). Low volume, kept on. -->
+  <WmiEvent onmatch="include" />
+
+  <!--
+    ======================================================================
+    DELIBERATELY OMITTED EVENTS, WITH REASONS (Phase 16 noise analysis)
+    ======================================================================
+      EID 5   ProcessTerminate       Would roughly double the process event
+                                     volume for no investigative value in a
+                                     lab. Detections key on the create event.
+      EID 9   RawAccessRead          Disk level raw reads need a filter to be
+                                     meaningful and produced nothing in the
+                                     lab.
+      EID 23  FileDelete (archived)  Archives deleted files to disk. Not
+                                     needed to detect or triage any of the
+                                     four lab simulations.
+      EID 26  FileDeleteDetected     Same reasoning, without the disk cost.
+      EID 24  ClipboardChange        Privacy invasive with no detection use
+                                     case in this lab. Deliberately not
+                                     collected.
+      EID 15  FileCreateStreamHash   Alternate data streams and mark of the
+                                     web are not exercised by the lab.
+
+    All of the above are OFF in Sysmon's own defaults too, so this file is
+    explicit about not turning them on.
+  -->
+
+</Sysmon>
