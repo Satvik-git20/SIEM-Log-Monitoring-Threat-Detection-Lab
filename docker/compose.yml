@@ -95,10 +95,10 @@ services:
     container_name: soc-lab-kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      # Lab-only: reuse the `elastic` superuser. In production Kibana uses a
-      # scoped `kibana_system` credential, never `elastic`.
-      - ELASTICSEARCH_USERNAME=elastic
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:?set ELASTIC_PASSWORD in .env}
+      # Lab-only: Kibana 9.x hard-rejects the `elastic` superuser
+      # (FATAL: [config validation of [elasticsearch].username]: value of
+      # "elastic" is forbidden). Kibana authenticates with the service-account
+      # TOKEN, rendered into docker/kibana.yml from KIBANA_SERVICE_TOKEN.
       - SERVER_PUBLICBASEURL=http://localhost:5601
       - SERVER_HOST=0.0.0.0
       # Binding inside the container must be 0.0.0.0 or the port publish fails;
@@ -115,6 +115,8 @@ services:
       - XPACK_FLEET_AGENTS_ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=
       - XPACK_FLEET_AGENTS_FLEET_SERVER_SSL_CERTIFICATEAUTHORITIES=
       - XPACK_FLEET_AGENTS_FLEET_SERVER_SSL_ENABLED=false
+    volumes:
+      - ./kibana.yml:/usr/share/kibana/config/kibana.yml:ro
     ports:
       - "${KIBANA_BIND_ADDRESS:-127.0.0.1}:5601:5601"
     depends_on:

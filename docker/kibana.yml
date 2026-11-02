@@ -1,0 +1,67 @@
+# =============================================================================
+# SOC-Lab - Docker Kibana configuration
+# =============================================================================
+# Rendered from elastic/config-templates/kibana.yml.tmpl for the Docker path.
+# This file is mounted into the Kibana container at config/kibana.yml.
+#
+# Two Docker-relevant differences from the native template:
+#   1. path.data/path.logs are Linux paths inside the container
+#   2. elasticsearch.username is NOT set. Kibana 9.x hard-rejects the
+#      elastic superuser (FATAL: value of "elastic" is forbidden), so the
+#      credential is the service-account TOKEN below.
+#
+# Credentials come from docker/.env:
+#   KIBANA_SERVICE_TOKEN  (service-account token, from ES Service Accounts API)
+#   KIBANA_ENCRYPTION_KEY (xpack.encryptedSavedObjects.encryptionKey, >= 32 chars)
+#
+# Regenerate both, then re-render/replace this file:
+#   pwsh -File scripts/setup/New-LabSecrets.ps1
+#   # then re-run Setup-Fleet.ps1 to mint a fresh KIBANA_SERVICE_TOKEN
+# =============================================================================
+
+# --- Server -----------------------------------------------------------------
+server.port: 5601
+# Container binds all interfaces; docker compose publishes the host port to
+# 127.0.0.1 (the real external control). Bind to 0.0.0.0 inside the container.
+server.host: "0.0.0.0"
+server.publicBaseUrl: "http://localhost:5601"
+server.name: "soc-lab-kibana"
+
+# --- Elasticsearch connection ------------------------------------------------
+elasticsearch.hosts: [ "http://elasticsearch:9200" ]
+
+# SERVICE ACCOUNT TOKEN, not the elastic superuser (Kibana 9.x rejects `elastic`).
+elasticsearch.serviceAccountToken: __KIBANA_SERVICE_TOKEN_REPLACE__
+
+# --- Fleet / Elastic Agent -------------------------------------------------
+xpack.fleet.enabled: true
+xpack.fleet.agents.enabled: true
+xpack.fleet.agents.elasticsearch.hosts: [ "http://elasticsearch:9200" ]
+xpack.fleet.agents.fleet_server.hosts: [ "http://fleet-server:8220" ]
+
+# --- Telemetry ---------------------------------------------------------------
+telemetry.optIn: false
+telemetry.allowChangingOptInStatus: false
+
+# --- Logging -----------------------------------------------------------------
+logging.root.level: info
+logging.root.appenders: [ "console", "rolling" ]
+logging.appenders.rolling:
+  type: rolling-file
+  layout:
+    type: json
+  fileName: /usr/share/kibana/logs/kibana.log
+  policy:
+    type: size-limit
+    size: 10mb
+  strategy:
+    type: numeric
+    pattern: "-%i"
+    max: 7
+  retention:
+    maxFiles: 7
+
+# --- Encrypted saved objects key (REQUIRED in 9.5.3) --------------------------
+# Fleet setup fails without it (FleetEncryptedSavedObjectEncryptionKeyRequired).
+# Keep stable across restarts.
+xpack.encryptedSavedObjects.encryptionKey: __KIBANA_ENCRYPTION_KEY_REPLACE__
